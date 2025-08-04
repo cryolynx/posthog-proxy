@@ -1,6 +1,8 @@
 worker_processes auto;
 
-events { worker_connections 1024; }
+events {
+    worker_connections 1024;
+}
 
 http {
     sendfile on;
@@ -11,24 +13,31 @@ http {
     resolver 8.8.8.8 8.8.4.4 valid=1s ipv6=off;
 
     server {
-        keepalive_timeout   70;
+        keepalive_timeout 70;
 
         server_name ${SERVER_NAME};
-
         listen ${PORT};
 
-        # Variable for upstream URL to enable semi-dynamic DNS resolution.
+        # Upstream PostHog host, e.g., app.posthog.com
         set $upstream_url https://${POSTHOG_HOST};
 
-        location / {
-            proxy_set_header      X-Real-IP                     $remote_addr;
-            proxy_set_header      X-Forwarded-For               $proxy_add_x_forwarded_for;
-            proxy_set_header      X-Forwarded-Host              $server_name;
-            proxy_set_header      X-Forwarded-Proto             $scheme;
-            proxy_set_header      Host                          ${POSTHOG_HOST};
+        # Proxy all requests starting with /posthog/ to PostHog, stripping the /posthog prefix
+        location /posthog/ {
+            proxy_set_header      X-Real-IP           $remote_addr;
+            proxy_set_header      X-Forwarded-For     $proxy_add_x_forwarded_for;
+            proxy_set_header      X-Forwarded-Host    $server_name;
+            proxy_set_header      X-Forwarded-Proto   $scheme;
+            proxy_set_header      Host                ${POSTHOG_HOST};
             proxy_redirect        off;
             proxy_ssl_server_name on;
-            proxy_pass            $upstream_url;
+
+            # Trailing slash is important here to strip /posthog prefix correctly
+            proxy_pass https://${POSTHOG_HOST}/;
+        }
+
+        # Optional: health check endpoint or catch-all root
+        location / {
+            return 200 "PostHog proxy is running\n";
         }
     }
 }
